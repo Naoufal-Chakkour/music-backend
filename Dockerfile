@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# الأدوات الأساسية
+# الأدوات المطلوبة
 RUN apt-get update \
     && apt-get install -y \
        python3 \
@@ -26,27 +26,23 @@ ENV DENO_INSTALL=/root/.deno
 ENV PATH="/root/.deno/bin:${PATH}"
 
 
-# تثبيت yt-dlp فقط
+# تثبيت yt-dlp + نفس إصدار bgutil plugin
 RUN python3 -m pip install --break-system-packages \
-    -U yt-dlp
+    -U yt-dlp \
+    bgutil-ytdlp-pot-provider==1.3.1
 
 
-# تنزيل bgutil بنفس الإصدار الذي سنبنيه
+# تنزيل نفس إصدار bgutil server
 RUN git clone --single-branch --branch 1.3.1 \
     https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git \
     /opt/bgutil-ytdlp-pot-provider
 
 
-# بناء bgutil
+# بناء bgutil server
 WORKDIR /opt/bgutil-ytdlp-pot-provider/server
 
 RUN npm ci \
     && npx tsc
-
-
-# تثبيت Python plugin من نفس النسخة
-RUN python3 -m pip install --break-system-packages \
-    /opt/bgutil-ytdlp-pot-provider
 
 
 # مشروع Music Backend

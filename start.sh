@@ -1,10 +1,24 @@
 #!/bin/sh
 
 echo "=== DEBUG RUNTIMES ==="
-which deno || true
-deno --version || true
-which yt-dlp || true
-yt-dlp --version || true
+
+echo "=== DENO PATH TEST ==="
+export PATH="/root/.deno/bin:$PATH"
+echo "PATH=$PATH"
+
+echo "--- Deno ---"
+which deno
+deno --version
+
+echo "--- yt-dlp ---"
+/usr/local/bin/yt-dlp --js-runtimes deno --version
+
+echo "=== END DENO PATH TEST ==="
+
+echo "--- Installed binaries ---"
+which yt-dlp
+yt-dlp --version
+
 echo "=== END DEBUG ==="
 
 echo "Starting bgutil POT Provider..."

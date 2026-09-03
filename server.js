@@ -16,10 +16,14 @@ app.get('/', (req, res) => {
 
 // تشغيل yt-dlp
 function runYtDlp(args, options = {}) {
-    return spawn('/usr/local/bin/yt-dlp', args, {
-        ...options,
-        stdio: ['ignore', 'pipe', 'pipe']
-    });
+  return spawn('/usr/local/bin/yt-dlp', args, {
+      ...options,
+      env: {
+          ...process.env,
+          PATH: `/root/.deno/bin:${process.env.PATH || ''}`
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+  });
 }
 
 

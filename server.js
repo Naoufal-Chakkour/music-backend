@@ -96,64 +96,65 @@ app.get('/api/search', (req, res) => {
 // تنزيل MP3
 app.get('/api/download', (req, res) => {
 
-    const videoId = req.query.id;
+  const videoId = req.query.id;
 
-    if (!videoId) {
-        return res.status(400).send('Missing Video ID');
-    }
+  if (!videoId) {
+      return res.status(400).send('Missing Video ID');
+  }
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="song.mp3"'
+  );
 
-    res.setHeader(
-        'Content-Disposition',
-        'attachment; filename="song.mp3"'
-    );
+  const args = [
+      url,
 
-    const args = [
-        url,
+      '--extract-audio',
+      '--audio-format',
+      'mp3',
 
-        '--extract-audio',
-        '--audio-format',
-        'mp3',
+      '--output',
+      '-',
 
-        '--output',
-        '-',
+      '--no-warnings',
 
-        '--no-warnings',
+      '--verbose',
 
-        '--extractor-args',
-        'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416'
-    ];
+      '--extractor-args',
+      'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416'
+  ];
 
-    console.log(`Starting download: ${videoId}`);
+  console.log(`Starting download: ${videoId}`);
 
-    const process = runYtDlp(args);
+  const process = runYtDlp(args);
 
-    process.stdout.pipe(res);
+  process.stdout.pipe(res);
 
-    process.stderr.on('data', data => {
-        console.error(`yt-dlp: ${data.toString()}`);
-    });
+  process.stderr.on('data', data => {
+      console.error(`yt-dlp: ${data.toString()}`);
+  });
 
-    process.on('close', code => {
+  process.on('close', code => {
 
-        console.log(`yt-dlp exited with code ${code}`);
+      console.log(`yt-dlp exited with code ${code}`);
 
-        if (code !== 0) {
-            console.error(
-                `Download failed for video ${videoId}`
-            );
-        }
-    });
+      if (code !== 0) {
+          console.error(
+              `Download failed for video ${videoId}`
+          );
+      }
+  });
 
-    req.on('close', () => {
+  req.on('close', () => {
 
-        if (!res.writableEnded) {
-            process.kill('SIGTERM');
-        }
-    });
+      if (!res.writableEnded) {
+          process.kill('SIGTERM');
+      }
+  });
 });
 
 

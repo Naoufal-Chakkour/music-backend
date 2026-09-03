@@ -2,22 +2,26 @@
 
 echo "=== DEBUG RUNTIMES ==="
 
-echo "=== DENO PATH TEST ==="
 export PATH="/root/.deno/bin:$PATH"
+
+echo "=== DENO FILE TEST ==="
+
 echo "PATH=$PATH"
 
-echo "--- Deno ---"
-which deno
-deno --version
+echo "--- Check Deno file ---"
+ls -la /root/.deno/bin/ || true
 
-echo "--- yt-dlp ---"
-/usr/local/bin/yt-dlp --js-runtimes deno --version
+echo "--- Which Deno ---"
+which deno || true
 
-echo "=== END DENO PATH TEST ==="
+echo "--- Deno version ---"
+deno --version || true
 
-echo "--- Installed binaries ---"
-which yt-dlp
-yt-dlp --version
+echo "--- yt-dlp version ---"
+yt-dlp --version || true
+
+echo "--- yt-dlp with Deno ---"
+yt-dlp --js-runtimes deno --verbose --version || true
 
 echo "=== END DEBUG ==="
 
@@ -27,7 +31,7 @@ cd /opt/bgutil-ytdlp-pot-provider/server
 
 node build/main.js --port 4416 &
 
-echo "bgutil POT Provider started on 127.0.0.1:4416"
+echo "bgutil POT Provider started"
 
 sleep 3
 

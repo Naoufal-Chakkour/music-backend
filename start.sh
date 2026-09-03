@@ -1,5 +1,12 @@
 #!/bin/sh
 
+echo "=== DEBUG RUNTIMES ==="
+which deno || true
+deno --version || true
+which yt-dlp || true
+yt-dlp --version || true
+echo "=== END DEBUG ==="
+
 echo "Starting bgutil POT Provider..."
 
 cd /opt/bgutil-ytdlp-pot-provider/server

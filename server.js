@@ -42,4 +42,27 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-module.exports = app;
+// مسار التنزيل واستخراج الصوت الكامل
+app.get('/api/download', async (req, res) => {
+  const videoId = req.query.id;
+  if (!videoId) return res.status(400).send('Missing Video ID');
+
+  try {
+    res.header('Content-Type', 'audio/mpeg');
+    res.header('Content-Disposition', `attachment; filename="song.mp3"`);
+
+    const subprocess = exec(`https://www.youtube.com/watch?v=${videoId}`, {
+      extractAudio: true,
+      audioFormat: 'mp3',
+      output: '-',
+    }, { stdio: ['ignore', 'pipe', 'ignore'] });
+
+    subprocess.stdout.pipe(res);
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).send('فشل استخراج ملف الصوت');
+  }
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

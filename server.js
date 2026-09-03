@@ -111,22 +111,25 @@ app.get('/api/download', (req, res) => {
   );
 
   const args = [
-      url,
+    url,
 
-      '--extract-audio',
-      '--audio-format',
-      'mp3',
+    '--extract-audio',
+    '--audio-format',
+    'mp3',
 
-      '--output',
-      '-',
+    '--output',
+    '-',
 
-      '--no-warnings',
+    '--no-warnings',
 
-      '--verbose',
+    '--verbose',
 
-      '--extractor-args',
-      'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416'
-  ];
+    '--js-runtimes',
+    'deno',
+
+    '--extractor-args',
+    'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416'
+];
 
   console.log(`Starting download: ${videoId}`);
 

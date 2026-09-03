@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# الأدوات المطلوبة
+# الأدوات الأساسية
 RUN apt-get update \
     && apt-get install -y \
        python3 \
@@ -19,30 +19,34 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 
-# تثبيت Deno كـ JavaScript runtime لـ yt-dlp
+# تثبيت Deno
 RUN curl -fsSL https://deno.land/install.sh | sh
 
 ENV DENO_INSTALL=/root/.deno
 ENV PATH="/root/.deno/bin:${PATH}"
 
 
-# تثبيت yt-dlp و bgutil POT Provider
+# تثبيت yt-dlp فقط
 RUN python3 -m pip install --break-system-packages \
-    -U yt-dlp \
-    bgutil-ytdlp-pot-provider
+    -U yt-dlp
 
 
-# تنزيل bgutil POT Provider
+# تنزيل bgutil بنفس الإصدار الذي سنبنيه
 RUN git clone --single-branch --branch 1.3.1 \
     https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git \
     /opt/bgutil-ytdlp-pot-provider
 
 
-# بناء bgutil POT Provider
+# بناء bgutil
 WORKDIR /opt/bgutil-ytdlp-pot-provider/server
 
 RUN npm ci \
     && npx tsc
+
+
+# تثبيت Python plugin من نفس النسخة
+RUN python3 -m pip install --break-system-packages \
+    /opt/bgutil-ytdlp-pot-provider
 
 
 # مشروع Music Backend
@@ -57,7 +61,6 @@ COPY . .
 RUN chmod +x start.sh
 
 
-# منفذ التطبيق الرئيسي
 EXPOSE 5000
 
 CMD ["./start.sh"]

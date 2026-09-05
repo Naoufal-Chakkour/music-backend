@@ -19,6 +19,7 @@ const router = express.Router();
 const MAX_TRACKS_PER_DOWNLOAD = 50;
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT = 30000;
+const MAX_REDIRECTS = 5;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,7 +41,7 @@ const ALLOWED_PROVIDERS = new Set([
 
 /*
 |--------------------------------------------------------------------------
-| Exact hosts used by our own source APIs
+| Trusted hosts
 |--------------------------------------------------------------------------
 */
 
@@ -80,41 +81,21 @@ function isPrivateOrLocalIp(ip) {
     return true;
   }
 
-  /*
-   * IPv4
-   */
-
   if (version === 4) {
-    const parts = ip
-      .split('.')
-      .map(Number);
+    const parts = ip.split('.').map(Number);
 
     const [a, b] = parts;
 
-    // 0.0.0.0/8
-    if (a === 0) {
+    if (a === 0) return true;
+
+    if (a === 10) return true;
+
+    if (a === 127) return true;
+
+    if (a === 169 && b === 254) {
       return true;
     }
 
-    // 10.0.0.0/8
-    if (a === 10) {
-      return true;
-    }
-
-    // 127.0.0.0/8
-    if (a === 127) {
-      return true;
-    }
-
-    // 169.254.0.0/16
-    if (
-      a === 169 &&
-      b === 254
-    ) {
-      return true;
-    }
-
-    // 172.16.0.0/12
     if (
       a === 172 &&
       b >= 16 &&
@@ -123,7 +104,6 @@ function isPrivateOrLocalIp(ip) {
       return true;
     }
 
-    // 192.168.0.0/16
     if (
       a === 192 &&
       b === 168
@@ -131,7 +111,6 @@ function isPrivateOrLocalIp(ip) {
       return true;
     }
 
-    // 100.64.0.0/10
     if (
       a === 100 &&
       b >= 64 &&
@@ -140,7 +119,6 @@ function isPrivateOrLocalIp(ip) {
       return true;
     }
 
-    // 198.18.0.0/15
     if (
       a === 198 &&
       (
@@ -154,14 +132,9 @@ function isPrivateOrLocalIp(ip) {
     return false;
   }
 
-  /*
-   * IPv6
-   */
-
   const normalized =
     ip.toLowerCase();
 
-  // Unspecified / loopback
   if (
     normalized === '::' ||
     normalized === '::1'
@@ -169,7 +142,6 @@ function isPrivateOrLocalIp(ip) {
     return true;
   }
 
-  // Unique local addresses
   if (
     normalized.startsWith('fc') ||
     normalized.startsWith('fd')
@@ -177,7 +149,6 @@ function isPrivateOrLocalIp(ip) {
     return true;
   }
 
-  // Link-local
   if (
     normalized.startsWith('fe8') ||
     normalized.startsWith('fe9') ||
@@ -192,7 +163,7 @@ function isPrivateOrLocalIp(ip) {
 
 /*
 |--------------------------------------------------------------------------
-| DNS security check
+| DNS security
 |--------------------------------------------------------------------------
 */
 
@@ -230,6 +201,29 @@ async function resolvesToPublicIp(hostname) {
 
 /*
 |--------------------------------------------------------------------------
+| Check whether hostname belongs to trusted
+| Internet Archive download infrastructure.
+|--------------------------------------------------------------------------
+*/
+
+function isInternetArchiveHost(hostname) {
+  const normalized =
+    hostname.toLowerCase();
+
+  if (
+    normalized === 'archive.org' ||
+    normalized === 'www.archive.org'
+  ) {
+    return true;
+  }
+
+  return /^ia\d+\.us\.archive\.org$/i.test(
+    normalized
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
 | Remote URL validation
 |--------------------------------------------------------------------------
 */
@@ -261,10 +255,6 @@ async function isAllowedRemoteUrl(
     return false;
   }
 
-  /*
-   * HTTPS only
-   */
-
   if (
     url.protocol !== 'https:'
   ) {
@@ -275,7 +265,7 @@ async function isAllowedRemoteUrl(
     url.hostname.toLowerCase();
 
   /*
-   * Direct IP addresses
+   * Direct IP addresses.
    */
 
   if (net.isIP(hostname)) {
@@ -285,7 +275,7 @@ async function isAllowedRemoteUrl(
   }
 
   /*
-   * Explicitly trusted hosts
+   * Explicitly trusted hosts.
    */
 
   if (
@@ -297,9 +287,7 @@ async function isAllowedRemoteUrl(
   }
 
   /*
-   * Internet Archive uses
-   * different iaXXX.us.archive.org
-   * download hosts.
+   * Internet Archive download servers.
    */
 
   if (
@@ -315,12 +303,9 @@ async function isAllowedRemoteUrl(
   }
 
   /*
-   * Openverse can point to
-   * third-party media hosts.
-   *
-   * We therefore verify that
-   * the hostname resolves to
-   * public IP addresses.
+   * Openverse intentionally allows
+   * external media hosts, but only when
+   * they resolve to public IP addresses.
    */
 
   if (
@@ -333,6 +318,22 @@ async function isAllowedRemoteUrl(
   }
 
   return false;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Validate redirect destination
+|--------------------------------------------------------------------------
+*/
+
+async function isAllowedRedirect(
+  value,
+  sourceProvider
+) {
+  return isAllowedRemoteUrl(
+    value,
+    sourceProvider
+  );
 }
 
 /*
@@ -358,19 +359,11 @@ function sanitizeFilename(name) {
     filename = 'track';
   }
 
-  /*
-   * Avoid "." and ".."
-   */
-
   filename =
     filename.replace(
       /^\.+$/,
       'track'
     );
-
-  /*
-   * Limit filename length
-   */
 
   return filename.substring(
     0,
@@ -487,6 +480,152 @@ function createUniqueFilename(
 
 /*
 |--------------------------------------------------------------------------
+| Download audio with SAFE redirect handling
+|--------------------------------------------------------------------------
+|
+| Axios is intentionally configured with maxRedirects: 0.
+| We manually inspect every redirect destination.
+|
+*/
+
+async function downloadAudio(
+  initialUrl,
+  sourceProvider
+) {
+  let currentUrl =
+    initialUrl;
+
+  for (
+    let redirectCount = 0;
+    redirectCount <= MAX_REDIRECTS;
+    redirectCount++
+  ) {
+    /*
+     * Validate the URL before every request.
+     */
+
+    const allowed =
+      await isAllowedRemoteUrl(
+        currentUrl,
+        sourceProvider
+      );
+
+    if (!allowed) {
+      throw new Error(
+        `Blocked remote URL: ${currentUrl}`
+      );
+    }
+
+    let response;
+
+    try {
+      response =
+        await axios.get(
+          currentUrl,
+          {
+            responseType:
+              'arraybuffer',
+
+            timeout:
+              DOWNLOAD_TIMEOUT,
+
+            maxContentLength:
+              MAX_FILE_SIZE,
+
+            maxBodyLength:
+              MAX_FILE_SIZE,
+
+            maxRedirects: 0,
+
+            validateStatus:
+              status =>
+                status >= 200 &&
+                status < 400,
+
+            headers: {
+              'User-Agent':
+                'MusicVault/3.0',
+
+              'Accept':
+                'audio/*,*/*;q=0.8'
+            }
+          }
+        );
+
+    } catch (err) {
+      throw err;
+    }
+
+    /*
+     * Successful response.
+     */
+
+    if (
+      response.status >= 200 &&
+      response.status < 300
+    ) {
+      return response;
+    }
+
+    /*
+     * Redirect.
+     */
+
+    if (
+      response.status >= 300 &&
+      response.status < 400
+    ) {
+      const location =
+        response.headers.location;
+
+      if (
+        !location
+      ) {
+        throw new Error(
+          `Redirect without Location header (${response.status})`
+        );
+      }
+
+      const nextUrl =
+        new URL(
+          location,
+          currentUrl
+        ).toString();
+
+      const redirectAllowed =
+        await isAllowedRedirect(
+          nextUrl,
+          sourceProvider
+        );
+
+      if (!redirectAllowed) {
+        throw new Error(
+          `Blocked redirect destination: ${nextUrl}`
+        );
+      }
+
+      console.log(
+        `[download] redirect ${response.status}: ${currentUrl} -> ${nextUrl}`
+      );
+
+      currentUrl =
+        nextUrl;
+
+      continue;
+    }
+
+    throw new Error(
+      `Unexpected HTTP status ${response.status}`
+    );
+  }
+
+  throw new Error(
+    `Too many redirects (>${MAX_REDIRECTS})`
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
 | GET /api/search
 |--------------------------------------------------------------------------
 */
@@ -520,7 +659,9 @@ router.get(
         );
 
       return res.status(200).json({
-        count: results.length,
+        count:
+          results.length,
+
         results
       });
 
@@ -572,12 +713,14 @@ router.post(
     }
 
     /*
-     * Validate every requested track.
+     * Validate requested tracks.
      */
 
     const validTracks = [];
 
-    for (const track of tracks) {
+    for (
+      const track of tracks
+    ) {
       if (
         !track ||
         typeof track !== 'object'
@@ -585,14 +728,13 @@ router.post(
         continue;
       }
 
-      /*
-       * We only download tracks that
-       * explicitly have a download URL.
-       */
-
       if (
         !track.downloadUrl
       ) {
+        console.warn(
+          `[download] missing downloadUrl: ${track.title || 'unknown'}`
+        );
+
         continue;
       }
 
@@ -618,7 +760,8 @@ router.post(
 
       validTracks.push({
         ...track,
-        sourceProvider: provider
+        sourceProvider:
+          provider
       });
     }
 
@@ -632,7 +775,7 @@ router.post(
     }
 
     /*
-     * ZIP response
+     * ZIP response.
      */
 
     res.status(200);
@@ -698,10 +841,7 @@ router.post(
     let addedCount = 0;
 
     /*
-     * Download files sequentially.
-     *
-     * This prevents all files from being
-     * loaded into memory simultaneously.
+     * Download sequentially.
      */
 
     for (
@@ -713,38 +853,9 @@ router.post(
 
       try {
         const response =
-          await axios.get(
+          await downloadAudio(
             track.downloadUrl,
-            {
-              responseType:
-                'arraybuffer',
-
-              timeout:
-                DOWNLOAD_TIMEOUT,
-
-              maxContentLength:
-                MAX_FILE_SIZE,
-
-              maxBodyLength:
-                MAX_FILE_SIZE,
-
-              /*
-               * Do not silently follow
-               * redirects to arbitrary hosts.
-               */
-
-              maxRedirects: 0,
-
-              validateStatus:
-                status =>
-                  status >= 200 &&
-                  status < 300,
-
-              headers: {
-                'User-Agent':
-                  'MusicVault/3.0'
-              }
-            }
+            track.sourceProvider
           );
 
         const contentType =
@@ -753,7 +864,7 @@ router.post(
           ] || '';
 
         /*
-         * Only accept audio.
+         * Accept only audio.
          */
 
         if (
@@ -791,8 +902,7 @@ router.post(
         }
 
         /*
-         * Prefer the actual response MIME type.
-         * Fall back to source metadata.
+         * Determine extension.
          */
 
         const extension =
@@ -826,7 +936,8 @@ router.post(
             response.data
           ),
           {
-            name: filename
+            name:
+              filename
           }
         );
 
@@ -837,25 +948,25 @@ router.post(
         );
 
       } catch (err) {
-        /*
-         * A single failed track should not
-         * destroy the complete ZIP.
-         */
-
         console.error(
-          `[download] failed "${track.title}":`,
+          `[download] failed "${track.title}" [${track.sourceProvider}]:`,
           err.message
         );
       }
     }
 
-    if (archiveFailed) {
+    /*
+     * Do not send an empty ZIP.
+     *
+     * Instead return a JSON error before
+     * finalizing the archive.
+     */
+
+    if (
+      archiveFailed
+    ) {
       return;
     }
-
-    /*
-     * Nothing could be downloaded.
-     */
 
     if (
       addedCount === 0
@@ -863,6 +974,14 @@ router.post(
       console.warn(
         '[download] no audio files were added'
       );
+
+      /*
+       * The archive has already been piped
+       * to the response, so we cannot safely
+       * replace it with JSON at this point.
+       *
+       * Abort the empty archive.
+       */
 
       archive.abort();
 

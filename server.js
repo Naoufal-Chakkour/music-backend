@@ -1,173 +1,176 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
-const { spawn } = require('child_process');
+
+const musicRoutes = require('./routes/music');
 
 const app = express();
 
-app.use(cors({ origin: '*' }));
-app.use(express.json());
+const PORT = Number(process.env.PORT) || 3000;
 
+/*
+|--------------------------------------------------------------------------
+| CORS
+|--------------------------------------------------------------------------
+|
+| محليًا:
+| http://localhost:3000
+|
+| في الإنتاج:
+| ALLOWED_ORIGINS=https://naoufal-chakkour.github.io
+|
+| يمكن وضع أكثر من Origin مفصولًا بفاصلة:
+| ALLOWED_ORIGINS=https://example.com,http://localhost:3000
+|
+*/
 
-// الصفحة الرئيسية
+const allowedOrigins = String(
+  process.env.ALLOWED_ORIGINS ||
+  'http://localhost:3000'
+)
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      /*
+       * الطلبات التي لا تحتوي Origin مثل:
+       * curl / Postman / server-to-server
+       */
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(
+        new Error('ORIGIN_NOT_ALLOWED')
+      );
+    },
+
+    methods: [
+      'GET',
+      'POST',
+      'OPTIONS'
+    ],
+
+    allowedHeaders: [
+      'Content-Type'
+    ]
+  })
+);
+
+/*
+|--------------------------------------------------------------------------
+| JSON Body
+|--------------------------------------------------------------------------
+*/
+
+app.use(
+  express.json({
+    limit: '1mb'
+  })
+);
+
+/*
+|--------------------------------------------------------------------------
+| Health Check
+|--------------------------------------------------------------------------
+*/
+
 app.get('/', (req, res) => {
-    res.send('Music Backend Service is Running!');
-});
-
-
-// تشغيل yt-dlp
-function runYtDlp(args, options = {}) {
-  return spawn('/usr/local/bin/yt-dlp', args, {
-      ...options,
-      env: {
-          ...process.env,
-          PATH: `/root/.deno/bin:${process.env.PATH || ''}`
-      },
-      stdio: ['ignore', 'pipe', 'pipe']
+  res.status(200).json({
+    status: 'ok',
+    service: 'Music Backend',
+    version: '3.0.0'
   });
-}
-
-
-// البحث
-app.get('/api/search', (req, res) => {
-    const query = req.query.q;
-
-    if (!query) {
-        return res.status(400).json({
-            error: 'Query parameter required'
-        });
-    }
-
-    const args = [
-        `ytsearch10:${query}`,
-
-        '--flat-playlist',
-        '--dump-single-json',
-        '--skip-download',
-
-        '--no-warnings',
-
-        '--extractor-args',
-        'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416'
-    ];
-
-    const process = runYtDlp(args);
-
-    let stdout = '';
-    let stderr = '';
-
-    process.stdout.on('data', data => {
-        stdout += data.toString();
-    });
-
-    process.stderr.on('data', data => {
-        stderr += data.toString();
-    });
-
-    process.on('close', code => {
-
-        if (code !== 0) {
-            console.error('Search error:', stderr);
-
-            return res.status(500).json({
-                error: 'Failed to search YouTube'
-            });
-        }
-
-        try {
-            const data = JSON.parse(stdout);
-
-            const results = (data.entries || []).map(video => ({
-                id: video.id,
-                title: video.title,
-                artist: video.uploader || 'Unknown Artist',
-                duration: video.duration || 0,
-                coverUrl: video.thumbnail || ''
-            }));
-
-            res.json(results);
-
-        } catch (error) {
-            console.error('JSON error:', error);
-
-            res.status(500).json({
-                error: 'Invalid YouTube response'
-            });
-        }
-    });
 });
 
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
 
-// تنزيل MP3
-app.get('/api/download', (req, res) => {
+app.use('/api', musicRoutes);
 
-  const videoId = req.query.id;
+/*
+|--------------------------------------------------------------------------
+| 404
+|--------------------------------------------------------------------------
+*/
 
-  if (!videoId) {
-      return res.status(400).send('Missing Video ID');
-  }
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'المسار غير موجود'
+  });
+});
 
-  const url = `https://www.youtube.com/watch?v=${videoId}`;
+/*
+|--------------------------------------------------------------------------
+| Global Error Handler
+|--------------------------------------------------------------------------
+|
+| يجب أن يكون في نهاية middleware stack.
+|
+*/
 
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader(
-      'Content-Disposition',
-      'attachment; filename="song.mp3"'
+app.use((err, req, res, next) => {
+  console.error(
+    '[SERVER ERROR]',
+    err
   );
 
-  const args = [
-    url,
+  if (res.headersSent) {
+    return next(err);
+  }
 
-    '--extract-audio',
-    '--audio-format',
-    'mp3',
+  if (err.message === 'ORIGIN_NOT_ALLOWED') {
+    return res.status(403).json({
+      error:
+        'هذا المصدر غير مسموح له بالوصول إلى API'
+    });
+  }
 
-    '--output',
-    '-',
-
-    '--no-warnings',
-
-    '--verbose',
-
-    '--js-runtimes',
-    'deno',
-
-    '--extractor-args',
-    'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416'
-];
-
-  console.log(`Starting download: ${videoId}`);
-
-  const process = runYtDlp(args);
-
-  process.stdout.pipe(res);
-
-  process.stderr.on('data', data => {
-      console.error(`yt-dlp: ${data.toString()}`);
-  });
-
-  process.on('close', code => {
-
-      console.log(`yt-dlp exited with code ${code}`);
-
-      if (code !== 0) {
-          console.error(
-              `Download failed for video ${videoId}`
-          );
-      }
-  });
-
-  req.on('close', () => {
-
-      if (!res.writableEnded) {
-          process.kill('SIGTERM');
-      }
+  return res.status(500).json({
+    error:
+      'حدث خطأ داخلي في الخادم'
   });
 });
 
+/*
+|--------------------------------------------------------------------------
+| Start Server
+|--------------------------------------------------------------------------
+*/
 
-// تشغيل السيرفر
-const PORT = process.env.PORT || 5000;
+const server = app.listen(
+  PORT,
+  '0.0.0.0',
+  error => {
+    if (error) {
+      console.error(
+        '[SERVER START ERROR]',
+        error
+      );
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-});
+      process.exit(1);
+    }
+
+    console.log(
+      `Music Backend running on port ${PORT}`
+    );
+
+    console.log(
+      'Allowed origins:',
+      allowedOrigins
+    );
+  }
+);
+
+module.exports = app;

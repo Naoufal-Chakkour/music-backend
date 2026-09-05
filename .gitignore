@@ -1,3 +1,33 @@
-.vercel/
+# Dependencies
 node_modules/
+
+# Environment variables / secrets
 .env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Runtime / temporary files
+tmp/
+temp/
+*.tmp
+
+# Generated archives
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.vscode/
+.idea/
+
+# Coverage
+coverage/
+.nyc_output/

@@ -17,9 +17,18 @@ const router = express.Router();
 */
 
 const MAX_TRACKS_PER_DOWNLOAD = 50;
-const MAX_FILE_SIZE = 100 * 1024 * 1024;
-const DOWNLOAD_TIMEOUT = 30000;
-const MAX_REDIRECTS = 5;
+
+const MAX_FILE_SIZE =
+  100 * 1024 * 1024;
+
+const DOWNLOAD_TIMEOUT =
+  30000;
+
+const CHECK_TIMEOUT =
+  10000;
+
+const MAX_REDIRECTS =
+  5;
 
 /*
 |--------------------------------------------------------------------------
@@ -75,24 +84,36 @@ const EXACT_ALLOWED_HOSTS = new Set([
 */
 
 function isPrivateOrLocalIp(ip) {
-  const version = net.isIP(ip);
+  const version =
+    net.isIP(ip);
 
   if (!version) {
     return true;
   }
 
   if (version === 4) {
-    const parts = ip.split('.').map(Number);
+    const parts =
+      ip.split('.').map(Number);
 
-    const [a, b] = parts;
+    const [a, b] =
+      parts;
 
-    if (a === 0) return true;
+    if (a === 0) {
+      return true;
+    }
 
-    if (a === 10) return true;
+    if (a === 10) {
+      return true;
+    }
 
-    if (a === 127) return true;
+    if (a === 127) {
+      return true;
+    }
 
-    if (a === 169 && b === 254) {
+    if (
+      a === 169 &&
+      b === 254
+    ) {
       return true;
     }
 
@@ -167,7 +188,9 @@ function isPrivateOrLocalIp(ip) {
 |--------------------------------------------------------------------------
 */
 
-async function resolvesToPublicIp(hostname) {
+async function resolvesToPublicIp(
+  hostname
+) {
   try {
     const addresses =
       await dns.lookup(
@@ -178,7 +201,9 @@ async function resolvesToPublicIp(hostname) {
         }
       );
 
-    if (!addresses.length) {
+    if (
+      !addresses.length
+    ) {
       return false;
     }
 
@@ -197,29 +222,6 @@ async function resolvesToPublicIp(hostname) {
 
     return false;
   }
-}
-
-/*
-|--------------------------------------------------------------------------
-| Check whether hostname belongs to trusted
-| Internet Archive download infrastructure.
-|--------------------------------------------------------------------------
-*/
-
-function isInternetArchiveHost(hostname) {
-  const normalized =
-    hostname.toLowerCase();
-
-  if (
-    normalized === 'archive.org' ||
-    normalized === 'www.archive.org'
-  ) {
-    return true;
-  }
-
-  return /^ia\d+\.us\.archive\.org$/i.test(
-    normalized
-  );
 }
 
 /*
@@ -250,7 +252,9 @@ async function isAllowedRemoteUrl(
   let url;
 
   try {
-    url = new URL(value);
+    url =
+      new URL(value);
+
   } catch {
     return false;
   }
@@ -265,17 +269,19 @@ async function isAllowedRemoteUrl(
     url.hostname.toLowerCase();
 
   /*
-   * Direct IP addresses.
+   * Direct IP address.
    */
 
-  if (net.isIP(hostname)) {
+  if (
+    net.isIP(hostname)
+  ) {
     return !isPrivateOrLocalIp(
       hostname
     );
   }
 
   /*
-   * Explicitly trusted hosts.
+   * Trusted hosts.
    */
 
   if (
@@ -303,9 +309,7 @@ async function isAllowedRemoteUrl(
   }
 
   /*
-   * Openverse intentionally allows
-   * external media hosts, but only when
-   * they resolve to public IP addresses.
+   * Openverse external media.
    */
 
   if (
@@ -322,7 +326,7 @@ async function isAllowedRemoteUrl(
 
 /*
 |--------------------------------------------------------------------------
-| Validate redirect destination
+| Redirect validation
 |--------------------------------------------------------------------------
 */
 
@@ -342,9 +346,13 @@ async function isAllowedRedirect(
 |--------------------------------------------------------------------------
 */
 
-function sanitizeFilename(name) {
+function sanitizeFilename(
+  name
+) {
   let filename =
-    String(name || 'track')
+    String(
+      name || 'track'
+    )
       .replace(
         /[\\/:*?"<>|]/g,
         '_'
@@ -356,7 +364,8 @@ function sanitizeFilename(name) {
       .trim();
 
   if (!filename) {
-    filename = 'track';
+    filename =
+      'track';
   }
 
   filename =
@@ -391,26 +400,44 @@ function extensionFromContentType(
       .toLowerCase();
 
   const extensions = {
-    'audio/mpeg': '.mp3',
-    'audio/mp3': '.mp3',
+    'audio/mpeg':
+      '.mp3',
 
-    'audio/ogg': '.ogg',
-    'application/ogg': '.ogg',
+    'audio/mp3':
+      '.mp3',
 
-    'audio/opus': '.opus',
+    'audio/ogg':
+      '.ogg',
 
-    'audio/wav': '.wav',
-    'audio/x-wav': '.wav',
+    'application/ogg':
+      '.ogg',
 
-    'audio/flac': '.flac',
-    'audio/x-flac': '.flac',
+    'audio/opus':
+      '.opus',
 
-    'audio/mp4': '.m4a',
-    'audio/x-m4a': '.m4a',
+    'audio/wav':
+      '.wav',
 
-    'audio/aac': '.aac',
+    'audio/x-wav':
+      '.wav',
 
-    'audio/webm': '.webm'
+    'audio/flac':
+      '.flac',
+
+    'audio/x-flac':
+      '.flac',
+
+    'audio/mp4':
+      '.m4a',
+
+    'audio/x-m4a':
+      '.m4a',
+
+    'audio/aac':
+      '.aac',
+
+    'audio/webm':
+      '.webm'
   };
 
   return (
@@ -439,9 +466,88 @@ function isAudioContentType(
       .toLowerCase();
 
   return (
-    type.startsWith('audio/') ||
-    type === 'application/ogg'
+    type.startsWith(
+      'audio/'
+    ) ||
+    type ===
+      'application/ogg'
   );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Detect audio extension from URL
+|--------------------------------------------------------------------------
+*/
+
+function urlLooksLikeAudio(
+  value
+) {
+  try {
+    const url =
+      new URL(value);
+
+    const pathname =
+      url.pathname
+        .toLowerCase();
+
+    return (
+      /\.(mp3|m4a|flac|wav|ogg|oga|opus|aac|webm)$/i
+        .test(pathname)
+    );
+
+  } catch {
+    return false;
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Check whether response is downloadable audio
+|--------------------------------------------------------------------------
+*/
+
+function isDownloadableAudioResponse(
+  contentType,
+  url
+) {
+  if (
+    isAudioContentType(
+      contentType
+    )
+  ) {
+    return true;
+  }
+
+  /*
+   * Some legitimate audio
+   * servers return octet-stream.
+   *
+   * In that case only accept it
+   * when the URL itself clearly
+   * identifies an audio file.
+   */
+
+  const type =
+    String(
+      contentType || ''
+    )
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+
+  if (
+    (
+      type ===
+        'application/octet-stream' ||
+      type === ''
+    ) &&
+    urlLooksLikeAudio(url)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /*
@@ -458,7 +564,8 @@ function createUniqueFilename(
   let filename =
     `${baseName}${extension}`;
 
-  let counter = 2;
+  let counter =
+    2;
 
   while (
     usedNames.has(
@@ -480,12 +587,283 @@ function createUniqueFilename(
 
 /*
 |--------------------------------------------------------------------------
-| Download audio with SAFE redirect handling
+| Resolve URL safely
 |--------------------------------------------------------------------------
 |
-| Axios is intentionally configured with maxRedirects: 0.
-| We manually inspect every redirect destination.
+| Used by the pre-download checker.
 |
+| IMPORTANT:
+| We request only a tiny Range when possible.
+| We do NOT download the complete file.
+|
+*/
+
+async function resolveCheckUrl(
+  initialUrl,
+  sourceProvider
+) {
+  let currentUrl =
+    initialUrl;
+
+  for (
+    let redirectCount = 0;
+    redirectCount <= MAX_REDIRECTS;
+    redirectCount++
+  ) {
+    const allowed =
+      await isAllowedRemoteUrl(
+        currentUrl,
+        sourceProvider
+      );
+
+    if (!allowed) {
+      throw new Error(
+        `Blocked remote URL: ${currentUrl}`
+      );
+    }
+
+    let response;
+
+    try {
+      response =
+        await axios.get(
+          currentUrl,
+          {
+            responseType:
+              'stream',
+
+            timeout:
+              CHECK_TIMEOUT,
+
+            maxRedirects:
+              0,
+
+            validateStatus:
+              status =>
+                status >= 200 &&
+                status < 400,
+
+            headers: {
+              'User-Agent':
+                'MusicVault/3.0',
+
+              'Accept':
+                'audio/*,*/*;q=0.8',
+
+              'Range':
+                'bytes=0-0'
+            }
+          }
+        );
+
+    } catch (err) {
+      throw err;
+    }
+
+    /*
+     * 2xx
+     */
+
+    if (
+      response.status >= 200 &&
+      response.status < 300
+    ) {
+      return {
+        url:
+          currentUrl,
+
+        response
+      };
+    }
+
+    /*
+     * 3xx
+     */
+
+    if (
+      response.status >= 300 &&
+      response.status < 400
+    ) {
+      if (
+        response.data &&
+        typeof response.data.destroy ===
+          'function'
+      ) {
+        response.data.destroy();
+      }
+
+      const location =
+        response.headers.location;
+
+      if (!location) {
+        throw new Error(
+          `Redirect without Location header (${response.status})`
+        );
+      }
+
+      const nextUrl =
+        new URL(
+          location,
+          currentUrl
+        ).toString();
+
+      const allowedRedirect =
+        await isAllowedRedirect(
+          nextUrl,
+          sourceProvider
+        );
+
+      if (!allowedRedirect) {
+        throw new Error(
+          `Blocked redirect destination: ${nextUrl}`
+        );
+      }
+
+      console.log(
+        `[check-download] redirect ${response.status}: ${currentUrl} -> ${nextUrl}`
+      );
+
+      currentUrl =
+        nextUrl;
+
+      continue;
+    }
+
+    throw new Error(
+      `Unexpected HTTP status ${response.status}`
+    );
+  }
+
+  throw new Error(
+    `Too many redirects (>${MAX_REDIRECTS})`
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| CHECK DOWNLOAD
+|--------------------------------------------------------------------------
+*/
+
+async function checkDownloadAvailability(
+  url,
+  sourceProvider
+) {
+  try {
+    const result =
+      await resolveCheckUrl(
+        url,
+        sourceProvider
+      );
+
+    const response =
+      result.response;
+
+    const contentType =
+      response.headers[
+        'content-type'
+      ] || '';
+
+    const contentLengthHeader =
+      response.headers[
+        'content-length'
+      ];
+
+    const contentLength =
+      Number(
+        contentLengthHeader || 0
+      );
+
+    /*
+     * Close the stream immediately.
+     *
+     * We don't want to download
+     * the entire song during checking.
+     */
+
+    if (
+      response.data &&
+      typeof response.data.destroy ===
+        'function'
+    ) {
+      response.data.destroy();
+    }
+
+    /*
+     * Verify that the destination
+     * is actually audio/downloadable.
+     */
+
+    const downloadable =
+      isDownloadableAudioResponse(
+        contentType,
+        result.url
+      );
+
+    if (!downloadable) {
+      return {
+        available:
+          false,
+
+        reason:
+          `رابط التنزيل لا يعيد ملفًا صوتيًا (${contentType || 'unknown'})`
+      };
+    }
+
+    /*
+     * Check known content length.
+     */
+
+    if (
+      contentLength &&
+      (
+        !Number.isFinite(
+          contentLength
+        ) ||
+        contentLength <= 0 ||
+        contentLength >
+          MAX_FILE_SIZE
+      )
+    ) {
+      return {
+        available:
+          false,
+
+        reason:
+          'حجم الملف غير صالح أو أكبر من الحد المسموح'
+      };
+    }
+
+    return {
+      available:
+        true,
+
+      finalUrl:
+        result.url,
+
+      contentType
+    };
+
+  } catch (err) {
+    const status =
+      err.response?.status;
+
+    return {
+      available:
+        false,
+
+      reason:
+        status
+          ? `HTTP ${status}`
+          : err.message
+    };
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| DOWNLOAD AUDIO
+|--------------------------------------------------------------------------
 */
 
 async function downloadAudio(
@@ -500,10 +878,6 @@ async function downloadAudio(
     redirectCount <= MAX_REDIRECTS;
     redirectCount++
   ) {
-    /*
-     * Validate the URL before every request.
-     */
-
     const allowed =
       await isAllowedRemoteUrl(
         currentUrl,
@@ -535,7 +909,8 @@ async function downloadAudio(
             maxBodyLength:
               MAX_FILE_SIZE,
 
-            maxRedirects: 0,
+            maxRedirects:
+              0,
 
             validateStatus:
               status =>
@@ -557,7 +932,7 @@ async function downloadAudio(
     }
 
     /*
-     * Successful response.
+     * 2xx
      */
 
     if (
@@ -568,7 +943,7 @@ async function downloadAudio(
     }
 
     /*
-     * Redirect.
+     * 3xx
      */
 
     if (
@@ -578,9 +953,7 @@ async function downloadAudio(
       const location =
         response.headers.location;
 
-      if (
-        !location
-      ) {
+      if (!location) {
         throw new Error(
           `Redirect without Location header (${response.status})`
         );
@@ -592,13 +965,13 @@ async function downloadAudio(
           currentUrl
         ).toString();
 
-      const redirectAllowed =
+      const allowedRedirect =
         await isAllowedRedirect(
           nextUrl,
           sourceProvider
         );
 
-      if (!redirectAllowed) {
+      if (!allowedRedirect) {
         throw new Error(
           `Blocked redirect destination: ${nextUrl}`
         );
@@ -645,7 +1018,9 @@ router.get(
       });
     }
 
-    if (artist.length > 200) {
+    if (
+      artist.length > 200
+    ) {
       return res.status(400).json({
         error:
           'عبارة البحث طويلة جدًا'
@@ -676,6 +1051,101 @@ router.get(
           'حدث خطأ أثناء البحث'
       });
     }
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| GET /api/check-download
+|--------------------------------------------------------------------------
+*/
+
+router.get(
+  '/check-download',
+  async (req, res) => {
+    const url =
+      String(
+        req.query.url || ''
+      ).trim();
+
+    const provider =
+      String(
+        req.query.provider || ''
+      ).trim();
+
+    if (!url) {
+      return res.status(400).json({
+        available:
+          false,
+
+        error:
+          'رابط التنزيل مفقود'
+      });
+    }
+
+    if (!provider) {
+      return res.status(400).json({
+        available:
+          false,
+
+        error:
+          'المصدر مفقود'
+      });
+    }
+
+    const allowed =
+      await isAllowedRemoteUrl(
+        url,
+        provider
+      );
+
+    if (!allowed) {
+      return res.status(403).json({
+        available:
+          false,
+
+        error:
+          'رابط غير مسموح'
+      });
+    }
+
+    const result =
+      await checkDownloadAvailability(
+        url,
+        provider
+      );
+
+    if (
+      !result.available
+    ) {
+      console.warn(
+        `[check-download] unavailable [${provider}]: ${url} -> ${result.reason}`
+      );
+
+      return res.status(200).json({
+        available:
+          false,
+
+        reason:
+          result.reason ||
+          'الملف غير قابل للتنزيل'
+      });
+    }
+
+    console.log(
+      `[check-download] available [${provider}]: ${url}`
+    );
+
+    return res.status(200).json({
+      available:
+        true,
+
+      finalUrl:
+        result.finalUrl,
+
+      contentType:
+        result.contentType
+    });
   }
 );
 
@@ -713,10 +1183,11 @@ router.post(
     }
 
     /*
-     * Validate requested tracks.
+     * Validate tracks.
      */
 
-    const validTracks = [];
+    const validTracks =
+      [];
 
     for (
       const track of tracks
@@ -760,6 +1231,7 @@ router.post(
 
       validTracks.push({
         ...track,
+
         sourceProvider:
           provider
       });
@@ -808,7 +1280,8 @@ router.post(
     archive.on(
       'error',
       err => {
-        archiveFailed = true;
+        archiveFailed =
+          true;
 
         console.error(
           '[download] archive error:',
@@ -838,7 +1311,8 @@ router.post(
     const usedNames =
       new Set();
 
-    let addedCount = 0;
+    let addedCount =
+      0;
 
     /*
      * Download sequentially.
@@ -847,7 +1321,9 @@ router.post(
     for (
       const track of validTracks
     ) {
-      if (archiveFailed) {
+      if (
+        archiveFailed
+      ) {
         break;
       }
 
@@ -864,12 +1340,13 @@ router.post(
           ] || '';
 
         /*
-         * Accept only audio.
+         * Verify audio.
          */
 
         if (
-          !isAudioContentType(
-            contentType
+          !isDownloadableAudioResponse(
+            contentType,
+            track.downloadUrl
           )
         ) {
           console.warn(
@@ -956,10 +1433,7 @@ router.post(
     }
 
     /*
-     * Do not send an empty ZIP.
-     *
-     * Instead return a JSON error before
-     * finalizing the archive.
+     * No files.
      */
 
     if (
@@ -974,14 +1448,6 @@ router.post(
       console.warn(
         '[download] no audio files were added'
       );
-
-      /*
-       * The archive has already been piped
-       * to the response, so we cannot safely
-       * replace it with JSON at this point.
-       *
-       * Abort the empty archive.
-       */
 
       archive.abort();
 

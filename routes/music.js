@@ -324,6 +324,31 @@ async function isAllowedRemoteUrl(
     );
   }
 
+  /*
+   * Listen Notes podcast audio.
+   *
+   * Listen Notes does not normally host
+   * the actual podcast audio file.
+   *
+   * The "audio" URL can point to the
+   * podcast publisher's own HTTPS server.
+   *
+   * Therefore we allow external hosts
+   * for Listen Notes, but ONLY when the
+   * hostname resolves entirely to public IPs.
+   *
+   * Private/local addresses remain blocked.
+   */
+
+  if (
+    sourceProvider ===
+      'Listen Notes'
+  ) {
+    return resolvesToPublicIp(
+      hostname
+    );
+  }
+
   return false;
 }
 

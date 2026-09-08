@@ -7,6 +7,7 @@ const musopen = require('../sources/musopen');
 const openverse = require('../sources/openverse');
 const wikimedia = require('../sources/wikimedia');
 const soundcloud = require('../sources/soundcloud');
+const podcasts = require('../sources/podcasts');
 
 /*
 |--------------------------------------------------------------------------
@@ -23,7 +24,8 @@ const sources = [
   musopen,
   openverse,
   wikimedia,
-  soundcloud
+  soundcloud,
+  podcasts
 ];
 
 /*

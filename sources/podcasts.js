@@ -3,6 +3,11 @@ const axios = require('axios');
 const API_URL =
   'https://listen-api.listennotes.com/api/v2';
 
+const apiKey =
+   String(
+   process.env.LISTEN_API_KEY || ''
+   ).trim();  
+
 async function search(query) {
   const cleanQuery =
     String(query || '').trim();
@@ -11,18 +16,7 @@ async function search(query) {
     return [];
   }
 
-  const apiKey =
-    String(
-      process.env.LISTEN_API_KEY || ''
-    ).trim();
-
-  if (!apiKey) {
-    console.warn(
-      '[Podcasts] LISTEN_API_KEY is not configured'
-    );
-
-    return [];
-  }
+ 
 
   try {
     const { data } =
@@ -54,13 +48,13 @@ async function search(query) {
           timeout:
             10000,
 
-          headers: {
-            'X-ListenAPI-Key':
-              apiKey,
-
-            'User-Agent':
-              'MusicVault/3.0'
-          }
+            headers: {
+              'X-ListenAPI-Key':
+                apiKey,
+            
+              'User-Agent':
+                'MusicVault/3.0'
+            }
         }
       );
 

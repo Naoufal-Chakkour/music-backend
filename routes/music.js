@@ -45,7 +45,8 @@ const ALLOWED_PROVIDERS = new Set([
   'Musopen',
   'Openverse',
   'Wikimedia Commons',
-  'SoundCloud'
+  'SoundCloud',
+  'Listen Notes'
 ]);
 
 /*
@@ -56,6 +57,8 @@ const ALLOWED_PROVIDERS = new Set([
 
 const EXACT_ALLOWED_HOSTS = new Set([
   'api.jamendo.com',
+
+  'listen-api.listennotes.com',
 
   'discoveryprovider.audius.co',
 
